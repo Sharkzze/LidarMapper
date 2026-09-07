@@ -20,6 +20,7 @@ setup(
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
+            'lidar_subscriber = lidar_mapper.lidar_subscriber:main',
         ],
     },
 )
