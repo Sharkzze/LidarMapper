@@ -17,17 +17,56 @@ class LidarSubscriber(Node):
         self.ts = message_filters.ApproximateTimeSynchronizer([self.lidar_sub, self.gps_sub], queue_size=10, slop=0.1)
         self.ts.registerCallback(self.listener_callback)
 
-    def listener_callback(self, msg, gps_msg):
-        valid_ranges = []
-        for r in msg.ranges:
-            if not math.isnan(r) and not math.isinf(r) and msg.range_min <= r <= msg.range_max:
-                valid_ranges.append(r)
+        self.running_baseline = None
+        self.last_pothole_time_sec = 0.0
 
-        if valid_ranges:
-            avg_distance = sum(valid_ranges) / len(valid_ranges)
-            self.get_logger().info(f'Average valid distance: {avg_distance:.3f}m')
+    def listener_callback(self, msg, gps_msg):
+        # Calculate central 30 degrees (-15 to +15 degrees)
+        # Convert degrees to radians
+        min_angle_rad = math.radians(-15.0)
+        max_angle_rad = math.radians(15.0)
+
+        valid_central_ranges = []
+        valid_central_angles = []
+
+        for i, r in enumerate(msg.ranges):
+            # Calculate angle for this range
+            angle = msg.angle_min + i * msg.angle_increment
+
+            # Check if within central 30 degrees (handle potential wrap-around, though typically angle_min is -pi and max is pi)
+            # We assume a front facing lidar where 0 is forward. If 0 is not forward, we might need to adjust.
+            # Usually -15 to +15 degrees is around 0.
+            if min_angle_rad <= angle <= max_angle_rad:
+                if not math.isnan(r) and not math.isinf(r) and msg.range_min <= r <= msg.range_max:
+                    valid_central_ranges.append(r)
+                    valid_central_angles.append(angle)
+
+        if valid_central_ranges:
+            current_avg = sum(valid_central_ranges) / len(valid_central_ranges)
+
+            # Update running baseline
+            if self.running_baseline is None:
+                self.running_baseline = current_avg
+            else:
+                self.running_baseline = 0.9 * self.running_baseline + 0.1 * current_avg
+
+            self.get_logger().info(f'Running baseline distance: {self.running_baseline:.3f}m')
+
+            # Check for potholes
+            current_time_sec = msg.header.stamp.sec + msg.header.stamp.nanosec * 1e-9
+
+            # 0.5-second time-based lockout
+            if current_time_sec - self.last_pothole_time_sec >= 0.5:
+                for r, angle in zip(valid_central_ranges, valid_central_angles):
+                    # Check if depth is > 5cm (0.05m)
+                    if r > self.running_baseline + 0.05:
+                        depth = r - self.running_baseline
+                        angle_deg = math.degrees(angle)
+                        self.get_logger().info(f'Pothole detected at angle {angle_deg:.1f} degrees! Depth: {depth:.3f}m')
+                        self.last_pothole_time_sec = current_time_sec
+                        break # Only log one pothole per scan
         else:
-            self.get_logger().info('No valid laser points found.')
+            self.get_logger().info('No valid laser points found in central 30 degrees.')
 
 def main(args=None):
     rclpy.init(args=args)
