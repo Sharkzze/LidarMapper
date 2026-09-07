@@ -15,6 +15,7 @@ class LidarSubscriber(Node):
             self.listener_callback,
             10)
         self.subscription  # prevent unused variable warning
+        self.saved_sample = False
 
     def listener_callback(self, msg):
         # Convert PointCloud2 msg to numpy array
@@ -38,13 +39,41 @@ class LidarSubscriber(Node):
 
             # Apply voxel grid downsampling with voxel size 0.05m
             downsampled_cloud = cropped_cloud.voxel_down_sample(voxel_size=0.05)
-
             downsampled_count = len(downsampled_cloud.points)
+
+            # RANSAC Ground Segmentation
+            if downsampled_count >= 3:
+                plane_model, inliers = downsampled_cloud.segment_plane(
+                    distance_threshold=0.02,
+                    ransac_n=3,
+                    num_iterations=1000
+                )
+
+                road_surface = downsampled_cloud.select_by_index(inliers)
+                obstacles_potholes = downsampled_cloud.select_by_index(inliers, invert=True)
+
+                road_count = len(road_surface.points)
+                outlier_count = len(obstacles_potholes.points)
+
+                # Save sample frame
+                if not self.saved_sample:
+                    o3d.io.write_point_cloud("road_surface.pcd", road_surface)
+                    o3d.io.write_point_cloud("obstacles_potholes.pcd", obstacles_potholes)
+                    self.get_logger().info('Saved sample .pcd files (road_surface.pcd, obstacles_potholes.pcd)')
+                    self.saved_sample = True
+            else:
+                road_count = 0
+                outlier_count = 0
         else:
             downsampled_count = 0
+            road_count = 0
+            outlier_count = 0
 
         # Log the counts
-        self.get_logger().info(f'Original point count: {original_count}, Downsampled point count: {downsampled_count}')
+        self.get_logger().info(
+            f'Original: {original_count}, Downsampled: {downsampled_count}, '
+            f'Road Surface: {road_count}, Outliers: {outlier_count}'
+        )
 
 
 def main(args=None):
