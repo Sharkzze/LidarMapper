@@ -1,22 +1,27 @@
 import rclpy
 from rclpy.node import Node
-from sensor_msgs.msg import PointCloud2
+from sensor_msgs.msg import PointCloud2, NavSatFix
 import sensor_msgs_py.point_cloud2 as pc2
+import message_filters
 import open3d as o3d
 import numpy as np
+import csv
+import os
 
 class LidarSubscriber(Node):
 
     def __init__(self):
         super().__init__('lidar_subscriber')
-        self.subscription = self.create_subscription(
-            PointCloud2,
-            '/lidar_points',
-            self.listener_callback,
-            10)
-        self.subscription  # prevent unused variable warning
 
-    def listener_callback(self, msg):
+        # Create message filter subscribers
+        self.lidar_sub = message_filters.Subscriber(self, PointCloud2, '/lidar_points')
+        self.gps_sub = message_filters.Subscriber(self, NavSatFix, '/gps/fix')
+
+        # Synchronize based on timestamps
+        self.ts = message_filters.ApproximateTimeSynchronizer([self.lidar_sub, self.gps_sub], queue_size=10, slop=0.1)
+        self.ts.registerCallback(self.listener_callback)
+
+    def listener_callback(self, msg, gps_msg):
         # Convert PointCloud2 msg to numpy array
         # Get x, y, z fields
         cloud_data = list(pc2.read_points(msg, field_names=("x", "y", "z"), skip_nans=True))
@@ -97,6 +102,17 @@ class LidarSubscriber(Node):
 
                                         if cluster_max_depth > max_depth:
                                             max_depth = cluster_max_depth
+
+                                        # Append to CSV
+                                        csv_file = 'pothole_map_data.csv'
+                                        file_exists = os.path.isfile(csv_file)
+
+                                        with open(csv_file, mode='a', newline='') as f:
+                                            writer = csv.writer(f)
+                                            if not file_exists:
+                                                writer.writerow(['latitude', 'longitude', 'depth', 'area'])
+                                            writer.writerow([gps_msg.latitude, gps_msg.longitude, cluster_max_depth, area])
+
                                 except Exception as e:
                                     # Convex hull might fail if points are coplanar or collinear, ignore
                                     pass
