@@ -3,6 +3,8 @@ from rclpy.node import Node
 from sensor_msgs.msg import LaserScan, NavSatFix
 import message_filters
 import math
+import csv
+import os
 
 class LidarSubscriber(Node):
 
@@ -21,10 +23,10 @@ class LidarSubscriber(Node):
         self.last_pothole_time_sec = 0.0
 
     def listener_callback(self, msg, gps_msg):
-        # Calculate central 30 degrees (-15 to +15 degrees)
+        # Calculate central 90 degrees (-45 to +45 degrees)
         # Convert degrees to radians
-        min_angle_rad = math.radians(-15.0)
-        max_angle_rad = math.radians(15.0)
+        min_angle_rad = math.radians(-45.0)
+        max_angle_rad = math.radians(45.0)
 
         valid_central_ranges = []
         valid_central_angles = []
@@ -33,9 +35,9 @@ class LidarSubscriber(Node):
             # Calculate angle for this range
             angle = msg.angle_min + i * msg.angle_increment
 
-            # Check if within central 30 degrees (handle potential wrap-around, though typically angle_min is -pi and max is pi)
+            # Check if within central 90 degrees (handle potential wrap-around, though typically angle_min is -pi and max is pi)
             # We assume a front facing lidar where 0 is forward. If 0 is not forward, we might need to adjust.
-            # Usually -15 to +15 degrees is around 0.
+            # Usually -45 to +45 degrees is around 0.
             if min_angle_rad <= angle <= max_angle_rad:
                 if not math.isnan(r) and not math.isinf(r) and msg.range_min <= r <= msg.range_max:
                     valid_central_ranges.append(r)
@@ -64,9 +66,20 @@ class LidarSubscriber(Node):
                         angle_deg = math.degrees(angle)
                         self.get_logger().info(f'Pothole detected at angle {angle_deg:.1f} degrees! Depth: {depth:.3f}m')
                         self.last_pothole_time_sec = current_time_sec
+
+                        # Append to CSV
+                        csv_file = 'pothole_map_data.csv'
+                        file_exists = os.path.isfile(csv_file)
+
+                        with open(csv_file, mode='a', newline='') as f:
+                            writer = csv.writer(f)
+                            if not file_exists:
+                                writer.writerow(['latitude', 'longitude', 'depth'])
+                            writer.writerow([gps_msg.latitude, gps_msg.longitude, depth])
+
                         break # Only log one pothole per scan
         else:
-            self.get_logger().info('No valid laser points found in central 30 degrees.')
+            self.get_logger().info('No valid laser points found in central 90 degrees.')
 
 def main(args=None):
     rclpy.init(args=args)
