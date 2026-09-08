@@ -7,7 +7,6 @@ This repository contains the software stack for an autonomous LiDAR-based road m
 
 **Primary Tools:**
 *   **ROS 2 (Robot Operating System):** Core middleware for sensor integration and real-time processing.
-*   **Open3D / PCL:** Point cloud processing and geometric algorithms.
 *   **Google Jules:** AI coding agent used to autonomously build and iterate on the pipeline.
 *   **Python 3:** Primary development language.
 
@@ -29,33 +28,18 @@ Since this project is being developed with the assistance of Google Jules (an au
 
 #### Phase 1: Workspace Initialization
 *   **Task:** Set up the basic ROS 2 Python package structure (`lidar_mapper`).
-*   **Dependencies:** Create a `package.xml` and `setup.py`. Include standard ROS 2 libraries, `sensor_msgs`, `open3d`, and `numpy`.
+*   **Dependencies:** Create a `package.xml` and `setup.py`. Include standard ROS 2 libraries, `sensor_msgs`, and message filters.
 *   **Goal:** Establish the boilerplate environment so Jules understands the project context.
 
-#### Phase 2: Data Acquisition (Node 1)
-*   **Task:** Create a ROS 2 subscriber node that listens to the `sensor_msgs/PointCloud2` topic (e.g., `/lidar_points`).
-*   **Processing:** Convert the ROS 2 message format into a standard Open3D point cloud object.
+#### Phase 2: Data Acquisition
+*   **Task:** Create a ROS 2 subscriber node that listens to the `sensor_msgs/LaserScan` topic (`/scan`) and `sensor_msgs/NavSatFix` (`/gps/fix`).
+*   **Processing:** Synchronize these streams using time.
 *   **Goal:** Ensure the software can successfully ingest hardware data.
 
-#### Phase 3: Preprocessing & Filtering
-*   **Task:** Implement a pass-through (crop) filter and voxel downsampling.
-*   **Processing:** 
-    *   Crop points above a certain height (e.g., > 1.5m) to remove trees, buildings, and tall vehicles.
-    *   Crop points outside the lane boundaries.
-    *   Downsample the point cloud to reduce computational load.
-*   **Goal:** Clean the data and isolate the region of interest (the road).
-
-#### Phase 4: Ground Segmentation (The Core Math)
-*   **Task:** Apply the RANSAC (Random Sample Consensus) algorithm to the filtered point cloud.
-*   **Processing:** Mathematically fit a plane to the data points. Points aligning with the plane are classified as "Road Surface" (inliers). Points deviating from the plane are "Obstacles" or "Discrepancies" (outliers).
-*   **Goal:** Establish the mathematical baseline of the flat road.
-
-#### Phase 5: Pothole Detection & Clustering
-*   **Task:** Analyze the outliers from Phase 4.
-*   **Processing:**
-    *   Filter outliers that are *below* the established RANSAC ground plane by a specific threshold (e.g., > 3cm depth).
-    *   Use clustering algorithms like DBSCAN (Density-Based Spatial Clustering of Applications with Noise) to group these points into individual potholes.
-*   **Goal:** Isolate and count specific road defects.
+#### Phase 3: Ground Segmentation & Pothole Detection (The Core Math)
+*   **Task:** Analyze the central 90-degree field of view of the 2D scan.
+*   **Processing:** Maintain an Exponential Moving Average (EMA) to establish a dynamic ground baseline. Identify potholes as dips > 5cm below the baseline.
+*   **Goal:** Detect road defects efficiently without heavy 3D processing.
 
 #### Phase 6: Geotagging & Export
 *   **Task:** Sync the timestamp of detected potholes with the GNSS/GPS topic stream.
