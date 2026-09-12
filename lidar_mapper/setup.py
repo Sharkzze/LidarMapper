@@ -17,7 +17,7 @@ setup(
     maintainer_email='you@example.com',
     description='LiDAR Road Mapper & Pothole Detector',
     license='Apache License 2.0',
-    tests_require=['pytest'],
+    tests_require=['pytest', 'launch_testing', 'launch_testing_ros'],
     entry_points={
         'console_scripts': [
             'lidar_subscriber = lidar_mapper.lidar_subscriber:main',
